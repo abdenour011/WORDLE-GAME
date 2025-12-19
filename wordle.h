@@ -11,7 +11,7 @@
 #define MAX_GUESSES 6
 #define DICT_FILE "words.txt"
 
-// Feedback constants
+
 #define GRAY 0
 #define YELLOW 1
 #define GREEN 2
@@ -21,7 +21,7 @@ typedef struct {
     int count;
 } WordList;
 
-// Function Prototypes
+
 WordList load_dictionary(const char *filename);
 void free_dictionary(WordList *wl);
 void get_feedback(const char *target, const char *guess, int *feedback);
