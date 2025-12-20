@@ -108,7 +108,7 @@ void play_game() {
     else printf("\n" RED BOLD "DEFEAT. Word: %s" RESET "\n", target);
 }
 
-int is_possible(const char *candidate, const char *guess, const int *feedback) {
+ int is_possible(const char *candidate, const char *guess, const int *feedback) {
     int temp_feedback[WORD_LENGTH];
     calculate_feedback(guess, candidate, temp_feedback);
     for(int i=0; i<WORD_LENGTH; i++) {
