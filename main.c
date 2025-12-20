@@ -1,17 +1,14 @@
 #include "wordle.h"
 
-// Global dictionary
 char dictionary[MAX_WORDS][WORD_LENGTH + 1];
 int dict_size = 0;
 
-// Helper: Convert to Uppercase
 void to_upper_str(char *str) {
     for (int i = 0; str[i]; i++) {
         str[i] = toupper((unsigned char)str[i]);
     }
 }
 
-// Helper: Load Dictionary
 void load_dictionary() {
     FILE *file = fopen(DICT_FILE, "r");
     if (!file) {
@@ -31,7 +28,6 @@ void load_dictionary() {
     fclose(file);
 }
 
-// Helper: Check if word exists in dictionary
 int is_valid_word(const char *word) {
     for (int i = 0; i < dict_size; i++) {
         if (strcmp(dictionary[i], word) == 0) {
@@ -41,23 +37,19 @@ int is_valid_word(const char *word) {
     return 0;
 }
 
-// Helper: Check colors (used by Game and Solver)
-// Returns an array: 2=Green, 1=Yellow, 0=Gray
 void calculate_feedback(const char *guess, const char *target, int *result_colors) {
     int target_freq[26] = {0};
     for (int i = 0; i < WORD_LENGTH; i++) target_freq[target[i] - 'A']++;
 
-    // Reset colors
     for(int i=0; i<WORD_LENGTH; i++) result_colors[i] = 0;
 
-    // Pass 1: Green
     for (int i = 0; i < WORD_LENGTH; i++) {
         if (guess[i] == target[i]) {
             result_colors[i] = 2;
             target_freq[guess[i] - 'A']--;
         }
     }
-    // Pass 2: Yellow
+
     for (int i = 0; i < WORD_LENGTH; i++) {
         if (result_colors[i] != 2 && target_freq[guess[i] - 'A'] > 0) {
             result_colors[i] = 1;
@@ -66,7 +58,7 @@ void calculate_feedback(const char *guess, const char *target, int *result_color
     }
 }
 
-// --- OPTION 1: PLAYER MODE ---
+
 void play_game() {
     int random_index = rand() % dict_size;
     char target[WORD_LENGTH + 1];
@@ -88,13 +80,11 @@ void play_game() {
         guess[strcspn(guess, "\r")] = 0;
         to_upper_str(guess);
 
-        // VALIDATION 1: Length
         if (strlen(guess) != WORD_LENGTH) {
             printf(RED "Error: Must be exactly %d letters.\n" RESET, WORD_LENGTH);
             continue; 
         }
-
-        // VALIDATION 2: Dictionary Check (Restored)
+       
         if (!is_valid_word(guess)) {
             printf(RED "Error: Word not found in dictionary. Try again.\n" RESET);
             continue;
@@ -118,7 +108,6 @@ void play_game() {
     else printf("\n" RED BOLD "DEFEAT. Word: %s" RESET "\n", target);
 }
 
-// --- OPTION 2: SOLVER MODE ---
 int is_possible(const char *candidate, const char *guess, const int *feedback) {
     int temp_feedback[WORD_LENGTH];
     calculate_feedback(guess, candidate, temp_feedback);
@@ -192,7 +181,6 @@ void solve_game() {
     free(valid_candidates);
 }
 
-// --- MAIN CONTROLLER ---
 int main() {
     srand(time(NULL));
     load_dictionary();
