@@ -8,7 +8,7 @@ It features two distinct modes:
 2.  Solver Mode: An automated algorithm that solves the Wordle puzzle efficiently by eliminating impossible words based on feedback.
 
 ## 👤 Authors
-Names:  TATA anes  ; AKACEM abdenour  ; TEYEB nacim
+Names:  TATA anes  ; AKACEM abdenour  ; TAYEB nacim
 
 ID'S:  242431624311  ; 242431577510 ;  242431596506
 
