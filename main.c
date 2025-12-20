@@ -1,176 +1,248 @@
 #include "wordle.h"
 
-WordList load_dictionary(const char *filename) {
-    FILE *f = fopen(filename, "r");
-    if (!f) { perror("Error loading dictionary"); exit(1); }
+// Global dictionary
+char dictionary[MAX_WORDS][WORD_LENGTH + 1];
+int dict_size = 0;
 
-    WordList wl;
-    wl.words = malloc(sizeof(char*) * 20000); 
-    wl.count = 0;
-
-    char buffer[10];
-    while (fgets(buffer, sizeof(buffer), f)) {
-        buffer[strcspn(buffer, "\n")] = 0; 
-        if (strlen(buffer) == WORD_LEN) {
-            wl.words[wl.count] = strdup(buffer);
-            wl.count++;
-        }
+// Helper: Convert to Uppercase
+void to_upper_str(char *str) {
+    for (int i = 0; str[i]; i++) {
+        str[i] = toupper((unsigned char)str[i]);
     }
-    fclose(f);
-    return wl;
 }
 
-void get_feedback(const char *target, const char *guess, int *feedback) {
-    int target_counts[26] = {0};
-    int guess_counts[26] = {0};
-
-  
-    for (int i = 0; i < WORD_LEN; i++) {
-        target_counts[target[i] - 'a']++;
-        feedback[i] = GRAY; 
+// Helper: Load Dictionary
+void load_dictionary() {
+    FILE *file = fopen(DICT_FILE, "r");
+    if (!file) {
+        printf(RED "Error: Could not open %s.\n" RESET, DICT_FILE);
+        exit(1);
     }
-    
-    for (int i = 0; i < WORD_LEN; i++) {
+    char buffer[100];
+    while (fgets(buffer, sizeof(buffer), file) && dict_size < MAX_WORDS) {
+        buffer[strcspn(buffer, "\n")] = 0;
+        buffer[strcspn(buffer, "\r")] = 0;
+        if (strlen(buffer) == WORD_LENGTH) {
+            strcpy(dictionary[dict_size], buffer);
+            to_upper_str(dictionary[dict_size]);
+            dict_size++;
+        }
+    }
+    fclose(file);
+}
+
+// Helper: Check if word exists in dictionary
+int is_valid_word(const char *word) {
+    for (int i = 0; i < dict_size; i++) {
+        if (strcmp(dictionary[i], word) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// Helper: Check colors (used by Game and Solver)
+// Returns an array: 2=Green, 1=Yellow, 0=Gray
+void calculate_feedback(const char *guess, const char *target, int *result_colors) {
+    int target_freq[26] = {0};
+    for (int i = 0; i < WORD_LENGTH; i++) target_freq[target[i] - 'A']++;
+
+    // Reset colors
+    for(int i=0; i<WORD_LENGTH; i++) result_colors[i] = 0;
+
+    // Pass 1: Green
+    for (int i = 0; i < WORD_LENGTH; i++) {
         if (guess[i] == target[i]) {
-            feedback[i] = GREEN;
-            target_counts[target[i] - 'a']--; 
-            guess_counts[i] = 1; 
+            result_colors[i] = 2;
+            target_freq[guess[i] - 'A']--;
         }
     }
-   
-    for (int i = 0; i < WORD_LEN; i++) {
-        if (feedback[i] == GREEN) continue; 
-        
-        int char_idx = guess[i] - 'a';
-        if (target_counts[char_idx] > 0) {
-            feedback[i] = YELLOW;
-            target_counts[char_idx]--;
+    // Pass 2: Yellow
+    for (int i = 0; i < WORD_LENGTH; i++) {
+        if (result_colors[i] != 2 && target_freq[guess[i] - 'A'] > 0) {
+            result_colors[i] = 1;
+            target_freq[guess[i] - 'A']--;
         }
     }
 }
 
+// --- OPTION 1: PLAYER MODE ---
+void play_game() {
+    int random_index = rand() % dict_size;
+    char target[WORD_LENGTH + 1];
+    strcpy(target, dictionary[random_index]);
 
-WordList filter_candidates(WordList *candidates, const char *last_guess, const int *actual_feedback) {
-    WordList new_list;
-    new_list.words = malloc(sizeof(char*) * candidates->count);
-    new_list.count = 0;
-
-    int sim_feedback[WORD_LEN];
-
-    for (int i = 0; i < candidates->count; i++) {
-        
-        get_feedback(candidates->words[i], last_guess, sim_feedback);
-
-        bool match = true;
-        for (int k = 0; k < WORD_LEN; k++) {
-            if (sim_feedback[k] != actual_feedback[k]) {
-                match = false;
-                break;
-            }
-        }
-
-        if (match) {
-            new_list.words[new_list.count++] = candidates->words[i]; 
-        }
-    }
-    return new_list;
-}
-
-void solve_wordle(WordList *full_list, const char *target, bool debug_mode) {
-    
-    WordList candidates;
-    candidates.words = malloc(sizeof(char*) * full_list->count);
-    memcpy(candidates.words, full_list->words, sizeof(char*) * full_list->count);
-    candidates.count = full_list->count;
-
-    char guess[WORD_LEN + 1];
-    int feedback[WORD_LEN];
     int attempts = 0;
+    int won = 0;
+    char guess[100];
+    int colors[WORD_LENGTH];
+
+    printf("\n" BOLD "--- PLAYER MODE ---" RESET "\n");
+    printf("Guess the 5-letter word! (Must be in dictionary)\n");
+
+    while (attempts < MAX_GUESSES && !won) {
+        printf("\nAttempt %d/%d > ", attempts + 1, MAX_GUESSES);
+        if (!fgets(guess, sizeof(guess), stdin)) break;
+        
+        guess[strcspn(guess, "\n")] = 0;
+        guess[strcspn(guess, "\r")] = 0;
+        to_upper_str(guess);
+
+        // VALIDATION 1: Length
+        if (strlen(guess) != WORD_LENGTH) {
+            printf(RED "Error: Must be exactly %d letters.\n" RESET, WORD_LENGTH);
+            continue; 
+        }
+
+        // VALIDATION 2: Dictionary Check (Restored)
+        if (!is_valid_word(guess)) {
+            printf(RED "Error: Word not found in dictionary. Try again.\n" RESET);
+            continue;
+        }
+
+        calculate_feedback(guess, target, colors);
+
+        printf("Result: ");
+        for (int i = 0; i < WORD_LENGTH; i++) {
+            if (colors[i] == 2) printf(GREEN "%c" RESET, guess[i]);
+            else if (colors[i] == 1) printf(YELLOW "%c" RESET, guess[i]);
+            else printf(GRAY "%c" RESET, guess[i]);
+        }
+        printf("\n");
+
+        if (strcmp(guess, target) == 0) won = 1;
+        else attempts++;
+    }
+
+    if (won) printf("\n" GREEN BOLD "VICTORY! Word: %s" RESET "\n", target);
+    else printf("\n" RED BOLD "DEFEAT. Word: %s" RESET "\n", target);
+}
+
+// --- OPTION 2: SOLVER MODE ---
+int is_possible(const char *candidate, const char *guess, const int *feedback) {
+    int temp_feedback[WORD_LENGTH];
+    calculate_feedback(guess, candidate, temp_feedback);
+    for(int i=0; i<WORD_LENGTH; i++) {
+        if(temp_feedback[i] != feedback[i]) return 0;
+    }
+    return 1;
+}
+
+void solve_game() {
+    int random_index = rand() % dict_size;
+    char target[WORD_LENGTH + 1];
+    strcpy(target, dictionary[random_index]);
     
-    strcpy(guess, "slate"); 
+    printf("\n" BOLD "--- SOLVER MODE ---" RESET "\n");
+    printf(CYAN "Target Word (Hidden): %s" RESET "\n", target);
 
-    if (debug_mode) printf("\n[SOLVER] Target: %s\n", target);
+    int *valid_candidates = malloc(dict_size * sizeof(int));
+    for(int i=0; i<dict_size; i++) valid_candidates[i] = 1;
+    
+    int attempts = 0;
+    int won = 0;
+    char current_guess[WORD_LENGTH + 1];
+    
+    if(dict_size > 0) strcpy(current_guess, "CRANE"); 
+    if (!is_valid_word(current_guess) && dict_size > 0) strcpy(current_guess, dictionary[0]);
 
-    while (attempts < MAX_GUESSES) {
-        attempts++;
+    while(attempts < MAX_GUESSES && !won) {
+        printf("\nSolver Guess %d: " BOLD "%s" RESET, attempts + 1, current_guess);
         
-        get_feedback(target, guess, feedback);
+        int feedback[WORD_LENGTH];
+        calculate_feedback(current_guess, target, feedback);
 
-        if (debug_mode) {
-            printf("Guess %d: %s | Remaining Candidates: %d\n", attempts, guess, candidates.count);
+        printf(" -> ");
+        for (int i = 0; i < WORD_LENGTH; i++) {
+            if (feedback[i] == 2) printf(GREEN "G" RESET);
+            else if (feedback[i] == 1) printf(YELLOW "Y" RESET);
+            else printf(GRAY "X" RESET);
         }
-       
-        bool win = true;
-        for(int i=0; i<WORD_LEN; i++) if(feedback[i] != GREEN) win = false;
-        
-        if (win) {
-            printf("Solver WON in %d attempts! Word: %s\n", attempts, guess);
-            free(candidates.words);
-            return;
-        }
-       
-        WordList next_candidates = filter_candidates(&candidates, guess, feedback);
-        free(candidates.words);
-        candidates = next_candidates;
-       
-        if (candidates.count > 0) {
-            strcpy(guess, candidates.words[0]); 
-            
-        } else {
-            printf("Error: No words match the feedback.\n");
+        printf("\n");
+
+        if (strcmp(current_guess, target) == 0) {
+            won = 1;
             break;
         }
-    }
-    printf("Solver LOST. Target was: %s\n", target);
-    free(candidates.words);
-}
 
-
-int main() {
-    srand(time(NULL));
-    WordList dictionary = load_dictionary(DICT_FILE);
-    printf("Loaded %d words.\n", dictionary.count);
-
-    if (dictionary.count == 0) return 1;
-  
-    char *target = dictionary.words[rand() % dictionary.count];
-
-    printf("1. Play Human vs CPU\n2. Run AI Solver\nChoice: ");
-    int choice;
-    scanf("%d", &choice);
-
-    if (choice == 1) {
-        
-        char guess[10];
-        int feedback[WORD_LEN];
-        for (int i = 0; i < MAX_GUESSES; i++) {
-            printf("Guess %d/%d: ", i+1, MAX_GUESSES);
-            scanf("%s", guess);            
-            
-            get_feedback(target, guess, feedback);
-            
-            printf("Result: ");
-            int green_count = 0;
-            for(int k=0; k<WORD_LEN; k++) {
-                if(feedback[k] == GREEN) { printf("G "); green_count++; }
-                else if(feedback[k] == YELLOW) printf("Y ");
-                else printf(". ");
-            }
-            printf("\n");
-
-            if (green_count == 5) {
-                printf("You Win!\n");
-                return 0;
+        int next_guess_index = -1;
+        for(int i=0; i<dict_size; i++) {
+            if(valid_candidates[i]) {
+                if(is_possible(dictionary[i], current_guess, feedback)) {
+                    valid_candidates[i] = 1;
+                    if(next_guess_index == -1) next_guess_index = i;
+                } else {
+                    valid_candidates[i] = 0;
+                }
             }
         }
-        printf("You Lose. Word was: %s\n", target);
-    } 
-    else {
-        solve_wordle(&dictionary, target, true);
+
+        if (next_guess_index != -1) {
+            strcpy(current_guess, dictionary[next_guess_index]);
+        } else {
+            printf("Error: Solver stuck! No words match feedback.\n");
+            break;
+        }
+        attempts++;
+    }
+    
+    if (won) printf("\n" GREEN "Solver found the word in %d attempts!" RESET "\n", attempts + 1);
+    else printf("\n" RED "Solver failed." RESET "\n");
+
+    free(valid_candidates);
+}
+
+// --- MAIN CONTROLLER ---
+int main() {
+    srand(time(NULL));
+    load_dictionary();
+
+    int current_mode = 0; 
+    int keep_running = 1;
+
+    while (keep_running) {
+        if (current_mode == 0) {
+            printf("\n" BOLD "=== WORDLE PROJECT ===" RESET "\n");
+            printf("1. Play Game (You guess)\n");
+            printf("2. Run Solver (Computer guesses)\n");
+            printf("3. Exit\n");
+            printf("Choice: ");
+            scanf("%d", &current_mode);
+            while (getchar() != '\n'); 
+
+            if (current_mode == 3) {
+                printf("Goodbye!\n");
+                return 0;
+            }
+            if (current_mode != 1 && current_mode != 2) {
+                printf("Invalid choice.\n");
+                current_mode = 0;
+                continue;
+            }
+        }
+
+        if (current_mode == 1) play_game();
+        else if (current_mode == 2) solve_game();
+
+        printf("\n" BOLD "--- WHAT NEXT? ---" RESET "\n");
+        printf("1. Play Again (Same Mode)\n");
+        printf("2. Change Mode (Main Menu)\n");
+        printf("3. Exit Game\n");
+        printf("Choice: ");
+        
+        int post_choice;
+        scanf("%d", &post_choice);
+        while (getchar() != '\n'); 
+
+        if (post_choice == 1) {
+            continue; 
+        } else if (post_choice == 2) {
+            current_mode = 0; 
+        } else {
+            keep_running = 0; 
+            printf("Goodbye!\n");
+        }
     }
 
-    for(int i=0; i<dictionary.count; i++) free(dictionary.words[i]);
-    free(dictionary.words);
-    
     return 0;
 }
