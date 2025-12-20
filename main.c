@@ -181,6 +181,7 @@ void solve_game() {
     free(valid_candidates);
 }
 
+
 int main() {
     srand(time(NULL));
     load_dictionary();
